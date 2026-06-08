@@ -2,8 +2,7 @@
 
 ## Overview
 
-This project implements a real-valued Genetic Algorithm (GA) in modern C++ focused on solving continuous optimization problems. The algorithm was developed to minimize the Rastrigin function, a well-known multimodal benchmark widely used to evaluate evolutionary optimization techniques.
-
+This project is an academic and experimental implementation of a real-valued Genetic Algorithm (GA) in modern C++. It was developed as a study of evolutionary optimization techniques, focusing on the application of tournament selection, Gaussian mutation, and Parent-Centric Crossover (PCX) to continuous optimization problems. As a test case, the algorithm was applied to the minimization of the Rastrigin function, a well-known multimodal benchmark commonly used to evaluate optimization algorithms.
 The implementation combines:
 
 * Tournament Selection
@@ -22,12 +21,12 @@ The objective is to achieve efficient exploration and exploitation of the search
 The algorithm minimizes the Rastrigin function:
 
 $$
-f(x) = An + \sum_{i=1}^{n} \left(x_i^2 - A\cos(2\pi x_i)\right)
+f(x) = An + \sum_{i=1}^{n} \left[x_i^2 - A\cos(2\pi x_i)\right],
 $$
 where:
 
-* (A = 10)
-* (n) is the dimensionality of the problem
+* A = 10
+* $n$ is the dimensionality of the problem
 
 The global optimum occurs at:
 $$
@@ -38,7 +37,7 @@ $$
 with:
 
 $$
-f(x)=0
+f(x)=0.
 $$
 
 ---
@@ -117,13 +116,13 @@ Default configuration:
 ### GCC
 
 ```bash
-g++ -O3 -march=native -fopenmp main.cpp -o ga
+g++ -O3 -march=native -fopenmp main_otimizado_paralelo.cpp -o ga
 ```
 
 ### Clang
 
 ```bash
-clang++ -O3 -march=native -fopenmp main.cpp -o ga
+clang++ -O3 -march=native -fopenmp main_otimizado_paralelo.cpp -o ga
 ```
 
 ---
@@ -137,8 +136,8 @@ clang++ -O3 -march=native -fopenmp main.cpp -o ga
 Example output:
 
 ```text
-0.000000123
-Tempo: 542 ms
+1.25184e-07
+Tempo: 5301 ms
 ```
 
 ---
@@ -178,12 +177,3 @@ These optimizations allow the algorithm to handle large populations efficiently.
 
 ## References
 
-Deb, K., Anand, A., Joshi, D. (2002).
-
-"A Computationally Efficient Evolutionary Algorithm for Real-Parameter Optimization".
-
-IEEE Transactions on Evolutionary Computation.
-
-Rastrigin, L. A. (1974).
-
-"Systems of Extremal Control".

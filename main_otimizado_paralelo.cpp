@@ -400,7 +400,7 @@ public:
             currentPopulation = (currentPopulation + 1) % BUFFERS_COUNT;
         }
 
-        std::cout << _fitness[currentPopulation][0];
+        std::cout << _fitness[currentPopulation][0]<<'\n';
     }
 };
 
