@@ -145,7 +145,7 @@ Tempo: 5301 ms
 ## Project Structure
 
 ```text
-├── main.cpp
+├── main_otimizado_paralelo.cpp
 ├── README.md
 └── results/
 ```
@@ -176,4 +176,8 @@ These optimizations allow the algorithm to handle large populations efficiently.
 ---
 
 ## References
+## References
 
+## Reference
+
+[1] K. Deb, D. Joshi, and A. Anand, "Real-Coded Evolutionary Algorithms with Parent-Centric Recombination," KanGAL Report No. 2001003, Kanpur Genetic Algorithms Laboratory, Indian Institute of Technology Kanpur, 2001. Available: https://www.egr.msu.edu/~kdeb/papers/tech_rep2001003.pdf
