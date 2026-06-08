@@ -21,26 +21,25 @@ The objective is to achieve efficient exploration and exploitation of the search
 
 The algorithm minimizes the Rastrigin function:
 
-[
+$$
 f(x) = An + \sum_{i=1}^{n} \left(x_i^2 - A\cos(2\pi x_i)\right)
-]
-
+$$
 where:
 
 * (A = 10)
 * (n) is the dimensionality of the problem
 
 The global optimum occurs at:
+$$
 
-[
 x = (0,0,\ldots,0)
-]
 
+$$
 with:
 
-[
+$$
 f(x)=0
-]
+$$
 
 ---
 
