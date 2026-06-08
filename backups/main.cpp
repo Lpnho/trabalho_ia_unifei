@@ -6,195 +6,404 @@
 #include <sstream>
 #include <random>
 #include <omp.h>
+#include <iomanip>
+#include <chrono>
+
+template <std::size_t N>
+inline double norm(double (&elemento)[N])
+{
+    double acc{0};
+#pragma omp simd reduction(+ : acc)
+    for (std::size_t i = 0; i < N; ++i)
+    {
+        acc += elemento[i] * elemento[i];
+    }
+    return std::sqrt(acc);
+}
+
+template <std::size_t N>
+inline double normQuad(double (&elemento)[N])
+{
+    double acc{0};
+#pragma omp simd reduction(+ : acc)
+    for (std::size_t i = 0; i < N; ++i)
+    {
+        acc += elemento[i] * elemento[i];
+    }
+    return acc;
+}
+
+template <std::size_t N>
+inline void sub(double (&minuendo)[N], double (&subtraendo)[N], double (&resto)[N])
+{
+#pragma omp simd
+    for (std::size_t i = 0; i < N; ++i)
+    {
+        resto[i] = minuendo[i] - subtraendo[i];
+    }
+}
+
+template <std::size_t N>
+inline void add(double (&a)[N], double (&b)[N], double (&result)[N])
+{
+#pragma omp simd
+    for (std::size_t i = 0; i < N; ++i)
+    {
+        result[i] = a[i] + b[i];
+    }
+}
+
+template <std::size_t N>
+inline double mult(double (&a)[N], double (&b)[N])
+{
+    double acc{0};
+#pragma omp simd reduction(+ : acc)
+    for (std::size_t i = 0; i < N; ++i)
+    {
+        acc += a[i] * b[i];
+    }
+    return acc;
+}
+
+template <std::size_t N>
+inline void mult(double (&a)[N], double b, double (&result)[N])
+{
+#pragma omp simd
+    for (std::size_t i = 0; i < N; ++i)
+    {
+        result[i] = a[i] * b;
+    }
+}
+
+template <std::size_t N>
+inline void orthogonalProjection(double (&a)[N], double (&b)[N], double (&result)[N])
+{
+    mult(b, mult(a, b), result);
+}
+
+constexpr double divideByZeroProtection(double fator)
+{
+    return (fator > 1.0e-12 ? fator : 1.0e-6);
+}
+
+template <std::size_t N>
+struct ParentCentricCrossover
+{
+    template <std::size_t u>
+    static void PCX(double (&dads)[u][N], double (&filho)[N], double sigmaKsi, double sigmaEta)
+    {
+        static std::random_device device{};
+        static std::mt19937 gerador{device()};
+        static std::uniform_int_distribution<std::size_t> rand(0, u - 1);
+        static std::normal_distribution<double> randDouble(0.0, 1.0);
+
+        double g[N]{};
+        double d[N]{};
+
+        std::size_t indexDad = rand(gerador);
+        double *p = dads[indexDad];
+
+        for (std::size_t iDad = 0; iDad < u; ++iDad)
+        {
+            for (std::size_t iN = 0; iN < N; iN++)
+            {
+                g[iN] += dads[iDad][iN] / u;
+            }
+        }
+
+        for (std::size_t iN = 0; iN < N; iN++)
+        {
+            d[iN] = p[iN] - g[iN];
+        }
+
+        // double normd = norm(d);
+        double normdQuad = divideByZeroProtection(normQuad(d));
+
+        double w[u - 1][N]{};
+        double v[N]{};
+        double di[N]{};
+        double Dmed = 0.0;
+        std::size_t k = 0;
+
+        for (std::size_t iDad = 0; iDad < u; ++iDad)
+        {
+            if (iDad != indexDad)
+            {
+                sub(dads[iDad], g, v);
+                mult(d, mult(v, d) / normdQuad, di);
+                sub(v, di, w[k]);
+                Dmed += norm(w[k]) / (u - 1);
+                ++k;
+            }
+        }
+        double e[u - 1][N]{};
+        double sumAcc[N]{};
+        double orthogonalProjectionResult[N]{};
+
+        mult(w[0], (1.0 / (divideByZeroProtection(norm(w[0])))), e[0]);
+
+        for (std::size_t iW = 1; iW < u - 1; ++iW)
+        {
+            orthogonalProjection(w[iW], e[0], sumAcc);
+
+            for (std::size_t iN = 1; iN < iW; ++iN)
+            {
+                orthogonalProjection(w[iW], e[iN], orthogonalProjectionResult);
+                add(orthogonalProjectionResult, sumAcc, sumAcc);
+            }
+            sub(w[iW], sumAcc, e[iW]);
+
+            mult(e[iW], (1.0 / (divideByZeroProtection(norm(e[iW])))), e[iW]);
+        }
+
+        double sumT[N]{};
+        double omegaKsi = randDouble(gerador) * sigmaKsi;
+        double K = sigmaEta * Dmed;
+        for (std::size_t iW = 1; iW < u - 1; ++iW)
+        {
+            double omegaEta = randDouble(gerador);
+            for (std::size_t iN = 0; iN < N; iN++)
+            {
+                sumT[iN] += e[iW][iN] * omegaEta * K;
+            }
+        }
+
+        for (std::size_t iN = 0; iN < N; iN++)
+        {
+            filho[iN] = p[iN] + omegaKsi * d[iN] + sumT[iN];
+        }
+    }
+};
 
 template <std::size_t N,
-          std::size_t POPULATION_SIZE,
-          std::size_t ENCODER_PRECISION>
+          std::size_t POPULATION_SIZE>
 class GeneticAlgorithm
 {
-    const std::uint32_t FACTOR_ASCII = 48;
     const double MAX = 5.12;
-    const double MUTATE_RATE = 0.1;
-    const double MUTATE_STRONG_RATE = 0.05;
     const double CROSSOVER_RATE = .4;
+    static constexpr std::size_t TOURNAMENT_N = 3;
+    const double TOURNAMENT_K = 0.75;
 
-    char _population[N * ENCODER_PRECISION * POPULATION_SIZE];
+    const double MUTATE_RATE = 0.1;
+    const double MUTATE_N_RATE = 0.4;
+    const double MUTATION_SIGMA = 1.0;
 
-public:
-    inline void print()
-    {
-        std::stringstream buffer;
+    static constexpr std::size_t CROSSOVER_U = 8;
+    static constexpr double SIGMA_KSI = 0.1;
+    static constexpr double SIGMA_ETA = 0.1;
 
-        for (std::size_t individuo = 0; individuo < POPULATION_SIZE; ++individuo)
-        {
-            for (std::size_t elemento = 0; elemento < N; ++elemento)
-            {
-                std::size_t inicio = (elemento * ENCODER_PRECISION) + individuo * N * ENCODER_PRECISION;
-                for (std::size_t indice = inicio; indice < inicio + ENCODER_PRECISION; ++indice)
-                {
-                    buffer << _population[indice];
-                }
-                buffer << ' ';
-            }
-            buffer << '\n';
-        }
-        std::cout << buffer.str();
-    }
+    const std::size_t GENERATION_N = 200;
 
-    inline double decode(std::size_t individuo, std::size_t index)
-    {
-        std::size_t begin = (index * ENCODER_PRECISION) + individuo * N * ENCODER_PRECISION;
-        std::size_t end = begin + ENCODER_PRECISION;
-        std::size_t i = begin + ((_population[begin] == '-') ? 1 : 0);
+    const double A = 10;
 
-        double result = ((double)(_population[i] - FACTOR_ASCII));
-        double multi = 1.0 / 10.0;
-        for (i += 2; i < end; ++i)
-        {
-            result += multi * ((double)(_population[i] - FACTOR_ASCII));
-            multi /= 10;
-        }
-        return result;
-    }
-
-    inline const char *encode(std::size_t individuo, std::size_t index, double value)
-    {
-        static char printData[ENCODER_PRECISION + 1];
-        printData[ENCODER_PRECISION] = '\0';
-
-        std::size_t begin = (index * ENCODER_PRECISION) + individuo * N * ENCODER_PRECISION;
-        std::size_t end = begin + ENCODER_PRECISION;
-
-        std::size_t i = begin;
-        if ((value < 0))
-        {
-            value *= -1;
-            printData[0] = _population[begin] = '-';
-            ++i;
-        }
-        double copyValue = value;
-        int intValue = (int)value;
-
-        printData[i - begin] = _population[i] = (char)(intValue + FACTOR_ASCII);
-        copyValue = 10 * (copyValue - intValue);
-        intValue = (int)copyValue;
-
-        ++i;
-
-        printData[i - begin] = _population[i] = '.';
-
-        for (i += 1; i < end; ++i)
-        {
-            printData[i - begin] = _population[i] = (char)(intValue + FACTOR_ASCII);
-            copyValue = 10 * (copyValue - intValue);
-            intValue = (int)copyValue;
-        }
-        return printData;
-    }
-
-private:
-    double _A;
+    static constexpr std::size_t BUFFERS_COUNT = 2;
+    double _population[BUFFERS_COUNT][POPULATION_SIZE][N];
 
 public:
-    GeneticAlgorithm(double A = 10) : _A{A}
-    {
-        iniciarPopulacao();
-    }
-    GeneticAlgorithm &iniciarPopulacao()
+    GeneticAlgorithm &initPopulation(double (&population)[POPULATION_SIZE][N])
     {
         std::random_device _random_device;
         std::mt19937 _gerador{_random_device()};
         std::uniform_real_distribution<double> random(-MAX, MAX);
-        for (std::size_t individuo = 0; individuo < POPULATION_SIZE; ++individuo)
+        for (std::size_t iPop = 0; iPop < POPULATION_SIZE; ++iPop)
         {
-            for (std::size_t elemento = 0; elemento < N; ++elemento)
+            for (std::size_t iN = 0; iN < N; ++iN)
             {
-                encode(individuo, elemento, random(_gerador));
+                population[iPop][iN] = random(_gerador);
             }
         }
         return *this;
     }
 
-private:
-    inline double applyFitness(std::size_t individuo)
+    GeneticAlgorithm &printPopulation(double (&population)[POPULATION_SIZE][N], std::size_t precision = 8)
+    {
+        std::stringstream buffer;
+        buffer << std::setprecision(precision);
+        for (std::size_t iPop = 0; iPop < POPULATION_SIZE; ++iPop)
+        {
+            for (std::size_t iN = 0; iN < N; ++iN)
+            {
+                buffer << population[iPop][iN] << ' ';
+            }
+            buffer << '\n';
+        }
+        std::cout << buffer.str();
+        return *this;
+    }
+
+    inline double applyFitness(double (&population)[POPULATION_SIZE][N], std::size_t individuo)
     {
         double sum = 0.0;
-        double el = 0;
         for (std::size_t elemento = 0; elemento < N; ++elemento)
         {
-            el = decode(individuo, elemento);
-            sum += el * el - _A * std::cos(el * std::numbers::pi * 2);
+            sum += population[individuo][elemento] * population[individuo][elemento] -
+                   A * std::cos(population[individuo][elemento] * std::numbers::pi * 2);
         }
-        return sum;
+        return sum + A * N;
     }
-    // inline void crossover(std::size_t individuoA, std::size_t individuoB)
-    // {
-    //     static std::random_device _random_device;
-    //     static std::mt19937 _gerador{_random_device()};
-    //     static std::uniform_int_distribution<double> randomIndex(0, ENCODER_PRECISION);
 
-    //     std::size_t begin = (0 * ENCODER_PRECISION) + individuo * N * ENCODER_PRECISION;
-    //     std::size_t end = begin + ENCODER_PRECISION * N;
-
-    //     std::size_t index1 = randomIndex(_gerador);
-    //     std::size_t index2 = randomIndex(_gerador);
-    //     if (_population[begin + index1] == '-' || _population[begin + index1] == '.' ||
-    //         _population[begin + index2] == '-' || _population[begin + index2] == '.')
-    //         return;
-
-    //     char aux = _population[begin + index1];
-    //     _population[begin + index1] = _population[begin + index2];
-    //     _population[begin + index2] = aux;
-    // }
-
-    inline void mutate(std::size_t individuo)
+    template <std::size_t NT>
+    inline std::size_t tournamentSelection(double (&population)[POPULATION_SIZE][N])
     {
-        static std::random_device _random_device{};
+        static std::random_device _random_device;
         static std::mt19937 _gerador{_random_device()};
-        static std::uniform_int_distribution<double> randomIndex(0, ENCODER_PRECISION);
+        static std::uniform_int_distribution<std::size_t> random(0, POPULATION_SIZE - 1);
+        static std::uniform_real_distribution<double> randomDouble(0.0, 1.0);
+        static std::size_t elements[NT]{};
+        std::size_t maior = 0;
+        std::size_t menor = 0;
 
-        std::size_t begin = (0 * ENCODER_PRECISION) + individuo * N * ENCODER_PRECISION;
-        std::size_t end = begin + ENCODER_PRECISION * N;
+        elements[0] = random(_gerador);
+        double maiorFit = applyFitness(population, elements[0]);
+        double menorFit = maiorFit;
+        double fit = 0;
 
-        std::size_t index1 = randomIndex(_gerador);
-        std::size_t index2 = randomIndex(_gerador);
-        if (_population[begin + index1] == '-' || _population[begin + index1] == '.' ||
-            _population[begin + index2] == '-' || _population[begin + index2] == '.')
-            return;
+        for (std::size_t index = 1; index < NT; ++index)
+        {
+            elements[index] = random(_gerador);
+            fit = applyFitness(population, elements[index]);
+            if (fit > maiorFit)
+            {
+                maior = index;
+                maiorFit = fit;
+            }
+            else if (fit < menorFit)
+            {
+                menor = index;
+                menorFit = fit;
+            }
+        }
+        // return ((randomDouble(_gerador) < TOURNAMENT_K) ? maior : menor);
+        return ((randomDouble(_gerador) < TOURNAMENT_K) ? menor : maior);
+    }
 
-        char aux = _population[begin + index1];
-        _population[begin + index1] = _population[begin + index2];
-        _population[begin + index2] = aux;
+    inline void gaussianMutation(double (&input)[POPULATION_SIZE][N],
+                                 double (&output)[POPULATION_SIZE][N], std::size_t element)
+    {
+        static std::random_device _random_device;
+        static std::mt19937 _gerador{_random_device()};
+        static std::uniform_real_distribution<double> random(0.0, 1.0);
+        static std::normal_distribution<double> normDist(0.0, MUTATION_SIGMA);
+
+        for (std::size_t index = 0; index < N; ++index)
+        {
+            output[element][index] = input[element][index];
+
+            if (random(_gerador) < MUTATE_N_RATE)
+            {
+                output[element][index] += normDist(_gerador);
+            }
+        }
+    }
+
+    inline void run(std::size_t precision = 8)
+    {
+        std::stringstream logBuffer;
+        logBuffer << std::fixed << std::setprecision(precision);
+
+        std::random_device randomDevice;
+        std::mt19937 gerador{randomDevice()};
+        std::uniform_real_distribution<double> randomDouble(0.0, 1.0);
+        std::uniform_int_distribution<std::size_t> random(0, POPULATION_SIZE - 1);
+
+        std::size_t currentPopulation = 0;
+        std::size_t bufferPopulation = 1;
+
+        initPopulation(_population[currentPopulation]);
+
+        double dads[CROSSOVER_U][N]{};
+
+        double currentBestFitness;
+        std::size_t currentBestIndex;
+        double value;
+        bool crossOverOrMutation;
+        for (std::size_t geracoes = 0; geracoes < GENERATION_N; ++geracoes)
+        {
+            currentBestFitness = applyFitness(_population[currentPopulation], 0);
+            currentBestIndex = 0;
+            for (std::size_t individuo = 1; individuo < POPULATION_SIZE; ++individuo)
+            {
+                crossOverOrMutation = false;
+
+                value = applyFitness(_population[currentPopulation], individuo);
+
+                if (value < currentBestFitness)
+                {
+                    currentBestFitness = value;
+                    currentBestIndex = individuo;
+                }
+
+                if (randomDouble(gerador) < CROSSOVER_RATE)
+                {
+                    crossOverOrMutation = true;
+                    for (std::size_t dadIndex = 0; dadIndex < CROSSOVER_U; ++dadIndex)
+                    {
+                        std::size_t randDad = tournamentSelection<TOURNAMENT_N>(_population[currentPopulation]);
+                        for (std::size_t iN = 0; iN < N; ++iN)
+                        {
+                            dads[dadIndex][iN] = _population[currentPopulation][randDad][iN];
+                        }
+                    }
+                    ParentCentricCrossover<N>::PCX(dads, _population[bufferPopulation][individuo], SIGMA_KSI, SIGMA_ETA);
+                }
+                else if (randomDouble(gerador) < MUTATE_RATE)
+                {
+                    crossOverOrMutation = true;
+
+                    gaussianMutation(
+                        _population[currentPopulation],
+                        _population[bufferPopulation],
+                        individuo);
+                }
+
+                for (std::size_t iN = 0; iN < N; ++iN)
+                {
+                    if (!crossOverOrMutation)
+                    {
+                        _population[bufferPopulation][individuo][iN] =
+                            _population[currentPopulation][individuo][iN];
+                    }
+
+                    value = _population[bufferPopulation][individuo][iN];
+                    value = std::max(-MAX, std::min(MAX, value));
+                    _population[bufferPopulation][individuo][iN] = value;
+                }
+            }
+
+            logBuffer << currentBestFitness << ", " << geracoes << ' ';
+
+            for (std::size_t iN = 0; iN < N; ++iN)
+            {
+                _population[bufferPopulation][0][iN] = _population[currentPopulation][currentBestIndex][iN];
+                // logBuffer << _population[bufferPopulation][0][iN] << ' ';
+            }
+            logBuffer << '\n';
+            bufferPopulation = currentPopulation;
+            currentPopulation = (currentPopulation + 1) % BUFFERS_COUNT;
+        }
+        std::cout << logBuffer.str();
     }
 };
 
-// Fitness
-// Crossover
-// Mutation
-// Selection
-// Encode
-// Decode
-
-template <std::size_t NN>
-inline double Rastrigin(double A, std::array<double, NN> vecParam)
-{
-    double sum = 0.0;
-    for (std::size_t i = 0; i < NN; ++i)
-    {
-        sum += vecParam[i] * vecParam[i] - A * std::cos(vecParam[i] * std::numbers::pi * 2);
-    }
-    return A * NN + sum;
-}
-
 int main()
 {
-    GeneticAlgorithm<4, 2, 10>().print();
-    // auto data = DataStorage<2, 2, 4>();
-    // std::printf("%s, ", data.encode(0, 0, 3.1415));
-    // std::printf("%s, ", data.encode(0, 1, 3.20));
+    auto inicio = std::chrono::steady_clock::now();
+    GeneticAlgorithm<8, 2000>().run(16);
+    auto fim = std::chrono::steady_clock::now();
+    auto tempo =
+        std::chrono::duration_cast<std::chrono::milliseconds>(fim - inicio);
 
-    // std::printf("%s, ", data.encode(1, 0, 3.1415));
-    // std::printf("%s, ", data.encode(1, 1, 3.20));
+    std::cout << "Tempo: " << tempo.count() << " ms\n";
 
+    // GeneticAlgorithm<2, 10>().initPopulation().printPopulation();
+
+    // double input[3][2] = {
+    //     {0, 0},
+    //     {2, 0},
+    //     {0, 2},
+    // };
+    // double output[2];
+    // ParentCentricCrossover<2>()
+    //     .PCX(input, output, 0.2, 0.2);
     return EXIT_SUCCESS;
 }
