@@ -87,10 +87,9 @@ constexpr double divideByZeroProtection(double fator)
     return (fator > 1.0e-12 ? fator : 1.0e-6);
 }
 
-template <std::size_t N>
 struct ParentCentricCrossover
 {
-    template <std::size_t u>
+    template <std::size_t N, std::size_t u>
     static void PCX(double (&dads)[u][N], double (&filho)[N], double sigmaKsi, double sigmaEta)
     {
         thread_local static std::random_device device{};
@@ -349,7 +348,7 @@ public:
                                 dads[dadIndex][iN] = _population[currentPopulation][randDad][iN];
                             }
                         }
-                        ParentCentricCrossover<N>::PCX(dads, _population[bufferPopulation][individuo], SIGMA_KSI, SIGMA_ETA);
+                        ParentCentricCrossover::PCX(dads, _population[bufferPopulation][individuo], SIGMA_KSI, SIGMA_ETA);
                     }
                     else if (randomDouble(gerador) < MUTATE_RATE)
                     {
@@ -400,7 +399,7 @@ public:
             currentPopulation = (currentPopulation + 1) % BUFFERS_COUNT;
         }
 
-        std::cout << _fitness[currentPopulation][0]<<'\n';
+        std::cout << _fitness[currentPopulation][0] << '\n';
     }
 };
 
